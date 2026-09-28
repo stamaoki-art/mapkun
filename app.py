@@ -11,15 +11,6 @@ from streamlit_folium import st_folium
 st.set_page_config(page_title="地理院地図 Viewer", layout="wide")
 st.title("🗺️ 国土地理院地図 Viewer")
 
-# ★ 傾斜量図の白地を透明化して暗い部分(227〜0)だけを合成する乗算CSSを注入
-st.markdown("""
-<style>
-.blend-multiply {
-    mix-blend-mode: multiply !important;
-}
-</style>
-""", unsafe_allow_html=True)
-
 # 1. Session State の初期化
 if "lat" not in st.session_state:
     st.session_state["lat"] = 35.681236  # 初期値（東京駅）
@@ -85,7 +76,6 @@ PREF_EKIJOKA_DATA = [
     {"name": "沖縄県", "url": "https://disaportaldata.gsi.go.jp/raster/08_03_ekijoka_pref/47_okinawa/{z}/{x}/{y}.png", "bbox": [122.9, 24.0, 131.3, 27.9]},
 ]
 
-# 該当するすべての都道府県の液状化タイルURLをリストで抽出
 def detect_pref_ekijoka_list(lat, lon):
     matched = []
     for item in PREF_EKIJOKA_DATA:
@@ -107,7 +97,6 @@ HAZARD_MAPS = {
     "⛰️ 傾斜量図": "https://cyberjapandata.gsi.go.jp/xyz/slopemap/{z}/{x}/{y}.png",
 }
 
-# 複数ヒットした都道府県の液状化タイルを動的追加
 for pref_name, url in matched_ekijoka_list:
     ekijoka_label = f"💧 液状化危険度（{pref_name}）"
     HAZARD_MAPS[ekijoka_label] = url
@@ -138,6 +127,19 @@ hazard_opacity = st.sidebar.slider(
     step=0.1
 )
 
+# 傾斜量図が選択されている時にコントラスト調整バーを追加
+if "⛰️ 傾斜量図" in selected_hazards:
+    slope_contrast = st.sidebar.slider(
+        "⛰️ 傾斜量図のコントラスト強度 (%)",
+        min_value=100,
+        max_value=3000,
+        value=1500,
+        step=100,
+        help="数値を大きくすると傾斜部が太くくっきりと黒く強調され、小さくするとマイルドになります"
+    )
+else:
+    slope_contrast = 1500
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("📍 座標指定ジャンプ")
 
@@ -157,19 +159,17 @@ def parse_coord_input(input_str):
         pass
     return None, None
 
-# 「指定した座標へ移動」ボタン
 if st.sidebar.button("指定した座標へ移動"):
     plat, plon = parse_coord_input(coord_input)
     if plat is not None and plon is not None:
         st.session_state["lat"] = plat
         st.session_state["lon"] = plon
         st.session_state["zoom"] = 14
-        st.session_state["drawn_geojson"] = None  # 描画表示をリセット
+        st.session_state["drawn_geojson"] = None
         st.rerun()
     else:
         st.sidebar.error("「緯度, 経度」のカンマ区切り形式で入力してください。")
 
-# 「現在地に指定」ボタン
 if st.sidebar.button("📍 現在地に指定"):
     map_state = st.session_state.get("map")
     if map_state and map_state.get("center"):
@@ -186,7 +186,6 @@ st.sidebar.subheader("📁 GPKGファイルの読み込み")
 
 uploaded_file = st.sidebar.file_uploader("GeoPackage (.gpkg) を選択", type=["gpkg"])
 
-# 地理院タイルのURL設定
 if map_type == "標準地図":
     tile_url = "https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png"
     attr = "国土地理院"
@@ -198,6 +197,7 @@ else:
 m = folium.Map(
     location=[st.session_state["lat"], st.session_state["lon"]],
     zoom_start=st.session_state["zoom"],
+    max_zoom=22,
     tiles=None,
     prefer_canvas=True
 )
@@ -207,10 +207,11 @@ folium.TileLayer(
     attr=attr,
     name=map_type,
     overlay=False,
+    max_native_zoom=18,
+    max_zoom=22,
     control=True
 ).add_to(m)
 
-# 指定座標（現在地基準点）の場所に赤いピンを立てる
 folium.Marker(
     location=[st.session_state["lat"], st.session_state["lon"]],
     popup=f"📍 基準座標<br>緯度: {st.session_state['lat']:.6f}<br>経度: {st.session_state['lon']:.6f}",
@@ -218,7 +219,6 @@ folium.Marker(
     icon=folium.Icon(color="red", icon="info-sign")
 ).add_to(m)
 
-# 右クリック（contextmenu）のイベントを Leaflet の click イベントに変換して Python へ送信する JS を追加
 right_click_js = folium.Element(f"""
     var map_obj = {m.get_name()};
     map_obj.on('contextmenu', function(e) {{
@@ -227,28 +227,50 @@ right_click_js = folium.Element(f"""
 """)
 m.get_root().script.add_child(right_click_js)
 
-# ★ 選択されたハザードマップタイル（液状化・傾斜量図含む）を重ね合わせ
+# ★ 【動的クラス名化】スライダーの値に応じて動的にクラス名(slope-layer-1500等)を変えることでブラウザに強制反映させる！
+dynamic_slope_class = f"slope-layer-{slope_contrast}"
+
+slope_boost_css = folium.Element(f"""
+<style>
+.{dynamic_slope_class}, .{dynamic_slope_class} img {{
+    mix-blend-mode: multiply !important;
+    filter: brightness(1.13) contrast({slope_contrast}%) !important;
+}}
+</style>
+""")
+m.get_root().html.add_child(slope_boost_css)
+
+# ★ 選択されたレイヤーの追加処理
 for hazard_name in selected_hazards:
     hazard_url = HAZARD_MAPS[hazard_name]
     
-    # 傾斜量図の場合は CSS の乗算クラス（blend-multiply）を指定して白地（平地）を透過！
-    layer_kwargs = {}
     if hazard_name == "⛰️ 傾斜量図":
-        layer_kwargs["className"] = "blend-multiply"
-        
-    folium.TileLayer(
-        tiles=hazard_url,
-        attr="国土地理院 / ハザードマップポータルサイト",
-        name=hazard_name,
-        overlay=True,
-        opacity=hazard_opacity,
-        control=True,
-        **layer_kwargs
-    ).add_to(m)
+        folium.TileLayer(
+            tiles=hazard_url,
+            attr="国土地理院",
+            name=hazard_name,
+            overlay=True,
+            opacity=1.0,
+            max_native_zoom=15,
+            max_zoom=22,
+            className=dynamic_slope_class,
+            control=True
+        ).add_to(m)
+    else:
+        folium.TileLayer(
+            tiles=hazard_url,
+            attr="国土地理院 / ハザードマップポータルサイト",
+            name=hazard_name,
+            overlay=True,
+            opacity=hazard_opacity,
+            max_native_zoom=17,
+            max_zoom=22,
+            control=True
+        ).add_to(m)
 
 Geocoder(collapsed=True, position="topleft").add_to(m)
 
-# 4. GPKG読み込み・座標周辺（ズーム14範囲）の描画処理
+# 4. GPKG読み込み・描画処理
 if uploaded_file is not None:
     try:
         @st.cache_data
@@ -288,7 +310,6 @@ if uploaded_file is not None:
 
         draw_button = st.sidebar.button("🎨 画面中央の周辺(Zoom14相当)を描画する", type="primary")
 
-        # 描画ボタンを押した瞬間：画面中心座標を取得して差し替え＆現在地確定
         if draw_button:
             map_state = st.session_state.get("map")
             
@@ -304,7 +325,6 @@ if uploaded_file is not None:
             center_lat = st.session_state["lat"]
             center_lon = st.session_state["lon"]
 
-            # ズーム14相当の範囲（約3km四方）で空間切り出し
             minx = center_lon - 0.020
             maxx = center_lon + 0.020
             miny = center_lat - 0.015
@@ -355,7 +375,6 @@ if uploaded_file is not None:
 
                 st.session_state["drawn_geojson"] = display_gdf.__geo_interface__
 
-        # 描画済みデータがあればオーバーレイ
         drawn_geojson = st.session_state.get("drawn_geojson")
         if drawn_geojson is not None and st.session_state.get("drawn_count", 0) > 0:
             st.sidebar.success(f"表示中地物: {st.session_state['drawn_count']:,} 件")
@@ -416,7 +435,6 @@ st_data = st_folium(
     returned_objects=["center", "zoom", "last_clicked"]
 )
 
-# マップ上を右クリック（または左クリック）した際、クリック位置を基準座標に即座に差し替えて画面更新
 if st_data and st_data.get("last_clicked"):
     click_lat = round(st_data["last_clicked"]["lat"], 6)
     click_lon = round(st_data["last_clicked"]["lng"], 6)
@@ -424,5 +442,5 @@ if st_data and st_data.get("last_clicked"):
     if click_lat != round(st.session_state["lat"], 6) or click_lon != round(st.session_state["lon"], 6):
         st.session_state["lat"] = click_lat
         st.session_state["lon"] = click_lon
-        st.session_state["drawn_geojson"] = None  # 描画データをリセット
+        st.session_state["drawn_geojson"] = None
         st.rerun()
