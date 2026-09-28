@@ -11,6 +11,15 @@ from streamlit_folium import st_folium
 st.set_page_config(page_title="地理院地図 Viewer", layout="wide")
 st.title("🗺️ 国土地理院地図 Viewer")
 
+# ★ 傾斜量図の白地を透明化して暗い部分(227〜0)だけを合成する乗算CSSを注入
+st.markdown("""
+<style>
+.blend-multiply {
+    mix-blend-mode: multiply !important;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # 1. Session State の初期化
 if "lat" not in st.session_state:
     st.session_state["lat"] = 35.681236  # 初期値（東京駅）
@@ -95,6 +104,7 @@ HAZARD_MAPS = {
     "土砂災害：土石流": "https://disaportaldata.gsi.go.jp/raster/05_dosekiryukeikaikuiki/{z}/{x}/{y}.png",
     "土砂災害：急傾斜地の崩壊": "https://disaportaldata.gsi.go.jp/raster/05_kyukeishakeikaikuiki/{z}/{x}/{y}.png",
     "土砂災害：地すべり": "https://disaportaldata.gsi.go.jp/raster/05_jisuberikeikaikuiki/{z}/{x}/{y}.png",
+    "⛰️ 傾斜量図": "https://cyberjapandata.gsi.go.jp/xyz/slopemap/{z}/{x}/{y}.png",
 }
 
 # 複数ヒットした都道府県の液状化タイルを動的追加
@@ -112,16 +122,16 @@ map_type = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.subheader("🌊 ハザードマップレイヤー")
+st.sidebar.subheader("🌊 ハザードマップ・オーバーレイ")
 
 selected_hazards = st.sidebar.multiselect(
-    "重ね表示するハザード情報",
+    "重ね表示するレイヤー情報",
     options=list(HAZARD_MAPS.keys()),
     default=[]
 )
 
 hazard_opacity = st.sidebar.slider(
-    "ハザードマップの不透明度",
+    "重ね合わせレイヤーの不透明度",
     min_value=0.0,
     max_value=1.0,
     value=0.6,
@@ -208,7 +218,7 @@ folium.Marker(
     icon=folium.Icon(color="red", icon="info-sign")
 ).add_to(m)
 
-# ★ 右クリック（contextmenu）のイベントを Leaflet の click イベントに変換して Python へ送信する JS を追加
+# 右クリック（contextmenu）のイベントを Leaflet の click イベントに変換して Python へ送信する JS を追加
 right_click_js = folium.Element(f"""
     var map_obj = {m.get_name()};
     map_obj.on('contextmenu', function(e) {{
@@ -217,16 +227,23 @@ right_click_js = folium.Element(f"""
 """)
 m.get_root().script.add_child(right_click_js)
 
-# 選択されたハザードマップタイル（液状化含む）を重ね合わせ
+# ★ 選択されたハザードマップタイル（液状化・傾斜量図含む）を重ね合わせ
 for hazard_name in selected_hazards:
     hazard_url = HAZARD_MAPS[hazard_name]
+    
+    # 傾斜量図の場合は CSS の乗算クラス（blend-multiply）を指定して白地（平地）を透過！
+    layer_kwargs = {}
+    if hazard_name == "⛰️ 傾斜量図":
+        layer_kwargs["className"] = "blend-multiply"
+        
     folium.TileLayer(
         tiles=hazard_url,
-        attr="ハザードマップポータルサイト",
+        attr="国土地理院 / ハザードマップポータルサイト",
         name=hazard_name,
         overlay=True,
         opacity=hazard_opacity,
-        control=True
+        control=True,
+        **layer_kwargs
     ).add_to(m)
 
 Geocoder(collapsed=True, position="topleft").add_to(m)
@@ -390,7 +407,7 @@ if uploaded_file is not None:
 
 folium.LayerControl().add_to(m)
 
-# 5. 地図表示（★ last_clicked を取得してクリック・右クリック座標を受け取る）
+# 5. 地図表示
 st_data = st_folium(
     m,
     width="100%",
@@ -399,7 +416,7 @@ st_data = st_folium(
     returned_objects=["center", "zoom", "last_clicked"]
 )
 
-# ★ マップ上を右クリック（または左クリック）した際、クリック位置を基準座標に即座に差し替えて画面更新
+# マップ上を右クリック（または左クリック）した際、クリック位置を基準座標に即座に差し替えて画面更新
 if st_data and st_data.get("last_clicked"):
     click_lat = round(st_data["last_clicked"]["lat"], 6)
     click_lon = round(st_data["last_clicked"]["lng"], 6)
