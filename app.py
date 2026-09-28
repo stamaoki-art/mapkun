@@ -76,7 +76,7 @@ PREF_EKIJOKA_DATA = [
     {"name": "沖縄県", "url": "https://disaportaldata.gsi.go.jp/raster/08_03_ekijoka_pref/47_okinawa/{z}/{x}/{y}.png", "bbox": [122.9, 24.0, 131.3, 27.9]},
 ]
 
-# ★ 県境対応：該当するすべての都道府県の液状化タイルURLをリストで抽出
+# 該当するすべての都道府県の液状化タイルURLをリストで抽出
 def detect_pref_ekijoka_list(lat, lon):
     matched = []
     for item in PREF_EKIJOKA_DATA:
@@ -97,7 +97,7 @@ HAZARD_MAPS = {
     "土砂災害：地すべり": "https://disaportaldata.gsi.go.jp/raster/05_jisuberikeikaikuiki/{z}/{x}/{y}.png",
 }
 
-# ★ 県境等で複数ヒットした全ての都道府県の液状化タイルを動的追加
+# 複数ヒットした都道府県の液状化タイルを動的追加
 for pref_name, url in matched_ekijoka_list:
     ekijoka_label = f"💧 液状化危険度（{pref_name}）"
     HAZARD_MAPS[ekijoka_label] = url
@@ -159,7 +159,7 @@ if st.sidebar.button("指定した座標へ移動"):
     else:
         st.sidebar.error("「緯度, 経度」のカンマ区切り形式で入力してください。")
 
-# 「現在地に指定」ボタン（移動後の画面中央を現在地に確定して都道府県＆液状化タイルを更新）
+# 「現在地に指定」ボタン
 if st.sidebar.button("📍 現在地に指定"):
     map_state = st.session_state.get("map")
     if map_state and map_state.get("center"):
@@ -198,6 +198,14 @@ folium.TileLayer(
     name=map_type,
     overlay=False,
     control=True
+).add_to(m)
+
+# ★ 指定座標（現在地基準点）の場所に赤いピンを立てる
+folium.Marker(
+    location=[st.session_state["lat"], st.session_state["lon"]],
+    popup=f"📍 基準座標<br>緯度: {st.session_state['lat']:.6f}<br>経度: {st.session_state['lon']:.6f}",
+    tooltip="📍 現在の基準座標",
+    icon=folium.Icon(color="red", icon="info-sign")
 ).add_to(m)
 
 # 選択されたハザードマップタイル（液状化含む）を重ね合わせ
