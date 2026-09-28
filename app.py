@@ -135,7 +135,7 @@ default_coord_str = f"{st.session_state['lat']:.6f}, {st.session_state['lon']:.6
 coord_input = st.sidebar.text_input(
     "現在の基準座標 (緯度, 経度)",
     value=default_coord_str,
-    help="直接入力してジャンプすることも可能です"
+    help="直接入力してジャンプすることも可能です。地図上を右クリックでも指定できます。"
 )
 
 def parse_coord_input(input_str):
@@ -200,13 +200,22 @@ folium.TileLayer(
     control=True
 ).add_to(m)
 
-# ★ 指定座標（現在地基準点）の場所に赤いピンを立てる
+# 指定座標（現在地基準点）の場所に赤いピンを立てる
 folium.Marker(
     location=[st.session_state["lat"], st.session_state["lon"]],
     popup=f"📍 基準座標<br>緯度: {st.session_state['lat']:.6f}<br>経度: {st.session_state['lon']:.6f}",
     tooltip="📍 現在の基準座標",
     icon=folium.Icon(color="red", icon="info-sign")
 ).add_to(m)
+
+# ★ 右クリック（contextmenu）のイベントを Leaflet の click イベントに変換して Python へ送信する JS を追加
+right_click_js = folium.Element(f"""
+    var map_obj = {m.get_name()};
+    map_obj.on('contextmenu', function(e) {{
+        map_obj.fire('click', e);
+    }});
+""")
+m.get_root().script.add_child(right_click_js)
 
 # 選択されたハザードマップタイル（液状化含む）を重ね合わせ
 for hazard_name in selected_hazards:
@@ -381,11 +390,22 @@ if uploaded_file is not None:
 
 folium.LayerControl().add_to(m)
 
-# 5. 地図表示
+# 5. 地図表示（★ last_clicked を取得してクリック・右クリック座標を受け取る）
 st_data = st_folium(
     m,
     width="100%",
     height=600,
     key="map",
-    returned_objects=["center", "zoom"]
+    returned_objects=["center", "zoom", "last_clicked"]
 )
+
+# ★ マップ上を右クリック（または左クリック）した際、クリック位置を基準座標に即座に差し替えて画面更新
+if st_data and st_data.get("last_clicked"):
+    click_lat = round(st_data["last_clicked"]["lat"], 6)
+    click_lon = round(st_data["last_clicked"]["lng"], 6)
+    
+    if click_lat != round(st.session_state["lat"], 6) or click_lon != round(st.session_state["lon"], 6):
+        st.session_state["lat"] = click_lat
+        st.session_state["lon"] = click_lon
+        st.session_state["drawn_geojson"] = None  # 描画データをリセット
+        st.rerun()
