@@ -181,6 +181,10 @@ if st.sidebar.button("📍 現在地に指定"):
     else:
         st.sidebar.warning("地図の操作情報がまだ読み込まれていません。少し動かしてから押してください。")
 
+# ★ 【新設】現在の基準座標で外部地番マップを開くボタン（ズーム18固定）
+chiban_url = f"https://chiban.koaza.net/#18/{st.session_state['lat']:.6f}/{st.session_state['lon']:.6f}"
+st.sidebar.link_button("🌐 外部地番マップで開く (Zoom18)", chiban_url, type="secondary")
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("📁 GPKGファイルの読み込み")
 
@@ -227,7 +231,7 @@ right_click_js = folium.Element(f"""
 """)
 m.get_root().script.add_child(right_click_js)
 
-# ★ 【動的クラス名化】スライダーの値に応じて動的にクラス名(slope-layer-1500等)を変えることでブラウザに強制反映させる！
+# スライダーの値に応じて動的にクラス名を変えて反映
 dynamic_slope_class = f"slope-layer-{slope_contrast}"
 
 slope_boost_css = folium.Element(f"""
