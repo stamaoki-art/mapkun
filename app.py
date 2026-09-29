@@ -84,9 +84,7 @@ def detect_pref_ekijoka_list(lat, lon):
             matched.append((item["name"], item["url"]))
     return matched
 
-matched_ekijoka_list = detect_pref_ekijoka_list(st.session_state["lat"], st.session_state["lon"])
-
-# 基本ハザードマップタイルのURL定義
+# ★ キーを固定化し、移動しても選択が外れないように統一！
 HAZARD_MAPS = {
     "洪水（想定最大規模）": "https://disaportaldata.gsi.go.jp/raster/01_flood_l2_shinsuishin_data/{z}/{x}/{y}.png",
     "高潮（想定最大規模）": "https://disaportaldata.gsi.go.jp/raster/03_hightide_l2_shinsuishin_data/{z}/{x}/{y}.png",
@@ -94,12 +92,9 @@ HAZARD_MAPS = {
     "土砂災害：土石流": "https://disaportaldata.gsi.go.jp/raster/05_dosekiryukeikaikuiki/{z}/{x}/{y}.png",
     "土砂災害：急傾斜地の崩壊": "https://disaportaldata.gsi.go.jp/raster/05_kyukeishakeikaikuiki/{z}/{x}/{y}.png",
     "土砂災害：地すべり": "https://disaportaldata.gsi.go.jp/raster/05_jisuberikeikaikuiki/{z}/{x}/{y}.png",
+    "💧 液状化危険度（現在地の都道府県自動）": "EKIJOKA_AUTO",
     "⛰️ 傾斜量図": "https://cyberjapandata.gsi.go.jp/xyz/slopemap/{z}/{x}/{y}.png",
 }
-
-for pref_name, url in matched_ekijoka_list:
-    ekijoka_label = f"💧 液状化危険度（{pref_name}）"
-    HAZARD_MAPS[ekijoka_label] = url
 
 # 2. サイドバー設定
 st.sidebar.header("🗺️ 表示・検索設定")
@@ -113,10 +108,12 @@ map_type = st.sidebar.radio(
 st.sidebar.markdown("---")
 st.sidebar.subheader("🌊 ハザードマップ・オーバーレイ")
 
+# ★ session_state & key を指定して選択値をガッチリ固定
 selected_hazards = st.sidebar.multiselect(
     "重ね表示するレイヤー情報",
     options=list(HAZARD_MAPS.keys()),
-    default=[]
+    default=st.session_state.get("selected_hazards", []),
+    key="selected_hazards"
 )
 
 hazard_opacity = st.sidebar.slider(
@@ -181,7 +178,6 @@ if st.sidebar.button("📍 現在地に指定"):
     else:
         st.sidebar.warning("地図の操作情報がまだ読み込まれていません。少し動かしてから押してください。")
 
-# ★ 【新設】現在の基準座標で外部地番マップを開くボタン（ズーム18固定）
 chiban_url = f"https://chiban.koaza.net/#18/{st.session_state['lat']:.6f}/{st.session_state['lon']:.6f}"
 st.sidebar.link_button("🌐 外部地番マップで開く (Zoom18)", chiban_url, type="secondary")
 
@@ -231,7 +227,7 @@ right_click_js = folium.Element(f"""
 """)
 m.get_root().script.add_child(right_click_js)
 
-# スライダーの値に応じて動的にクラス名を変えて反映
+# 傾斜量図の動的クラスCSS
 dynamic_slope_class = f"slope-layer-{slope_contrast}"
 
 slope_boost_css = folium.Element(f"""
@@ -244,13 +240,25 @@ slope_boost_css = folium.Element(f"""
 """)
 m.get_root().html.add_child(slope_boost_css)
 
-# ★ 選択されたレイヤーの追加処理
+# ★ 選択されたレイヤーの追加処理（移動してもレイヤー選択を完全維持＆現在地の液状化を自動追従！）
 for hazard_name in selected_hazards:
-    hazard_url = HAZARD_MAPS[hazard_name]
-    
-    if hazard_name == "⛰️ 傾斜量図":
+    if hazard_name == "💧 液状化危険度（現在地の都道府県自動）":
+        matched_ekijoka_list = detect_pref_ekijoka_list(st.session_state["lat"], st.session_state["lon"])
+        for pref_name, ekijoka_url in matched_ekijoka_list:
+            folium.TileLayer(
+                tiles=ekijoka_url,
+                attr=f"ハザードマップポータルサイト（{pref_name}）",
+                name=f"💧 液状化危険度（{pref_name}）",
+                overlay=True,
+                opacity=hazard_opacity,
+                max_native_zoom=17,
+                max_zoom=22,
+                control=True
+            ).add_to(m)
+
+    elif hazard_name == "⛰️ 傾斜量図":
         folium.TileLayer(
-            tiles=hazard_url,
+            tiles=HAZARD_MAPS[hazard_name],
             attr="国土地理院",
             name=hazard_name,
             overlay=True,
@@ -260,9 +268,10 @@ for hazard_name in selected_hazards:
             className=dynamic_slope_class,
             control=True
         ).add_to(m)
+
     else:
         folium.TileLayer(
-            tiles=hazard_url,
+            tiles=HAZARD_MAPS[hazard_name],
             attr="国土地理院 / ハザードマップポータルサイト",
             name=hazard_name,
             overlay=True,
