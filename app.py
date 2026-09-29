@@ -36,7 +36,7 @@ PREF_EKIJOKA_DATA = [
     {"name": "福島県", "url": "https://disaportaldata.gsi.go.jp/raster/08_03_ekijoka_pref/07_fukushima/{z}/{x}/{y}.png", "bbox": [139.1, 36.8, 141.1, 37.9]},
     {"name": "茨城県", "url": "https://disaportaldata.gsi.go.jp/raster/08_03_ekijoka_pref/08_ibaraki/{z}/{x}/{y}.png", "bbox": [139.7, 35.7, 140.9, 36.9]},
     {"name": "栃木県", "url": "https://disaportaldata.gsi.go.jp/raster/08_03_ekijoka_pref/09_tochigi/{z}/{x}/{y}.png", "bbox": [139.3, 36.2, 140.3, 37.2]},
-    {"name": "群馬県", "url": "https://disaportaldata.gsi.go.jp/raster/08_03_ekijoka_pref/10_gunma/{z}/{x}/{y}.png", "bbox": [138.3, 35.9, 139.6, 37.1]},
+    {"name": "群馬県", "url": "https://disaportaldata.gsi.go.jp/raster/08_03_ekijoka_pref/10_gumma/{z}/{x}/{y}.png", "bbox": [138.3, 35.9, 139.6, 37.1]},
     {"name": "埼玉県", "url": "https://disaportaldata.gsi.go.jp/raster/08_03_ekijoka_pref/11_saitama/{z}/{x}/{y}.png", "bbox": [138.7, 35.7, 139.9, 36.3]},
     {"name": "千葉県", "url": "https://disaportaldata.gsi.go.jp/raster/08_03_ekijoka_pref/12_chiba/{z}/{x}/{y}.png", "bbox": [139.7, 34.9, 140.9, 36.1]},
     {"name": "東京都", "url": "https://disaportaldata.gsi.go.jp/raster/08_03_ekijoka_pref/13_tokyo/{z}/{x}/{y}.png", "bbox": [138.9, 35.5, 139.9, 35.9]},
